@@ -7,6 +7,9 @@ public class RestartOnR : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.R))
         {
+            // Resetear contador persistente antes de recargar la escena
+            Projectile.ResetKillCount();
+
             // Recarga la escena actual
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }

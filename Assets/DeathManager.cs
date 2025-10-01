@@ -7,43 +7,73 @@ public class DeathManager : MonoBehaviour
     public static DeathManager Instance { get; private set; }
 
     [Header("Configuración del efecto de muerte")]
-    [Tooltip("Prefab del ParticleSystem que se instanciará en la posición del player.")]
     public GameObject deathEffectPrefab;
-
-    [Tooltip("Duración (segundos) que debe mostrarse el particle effect antes de reiniciar.")]
     public float effectDuration = 0.5f;
 
-    [Tooltip("Tiempo en segundos para esperar antes de reiniciar la escena tras morir.")]
-    public float restartDelayAfterDeath = 3f;
-
-    [Header("Referencia a objetos adicionales a eliminar")]
-    [Tooltip("Villain (u otro objeto) que también será destruido al morir el player.")]
-    public GameObject additionalObjectToDestroy;
+    [Header("Referencias a objetos adicionales a eliminar")]
+    public GameObject additionalObjectToDestroy1;
+    public GameObject additionalObjectToDestroy2;
+    public GameObject additionalObjectToDestroy3;
 
     private bool playerIsDead = false;
+
+    // --- Nueva propiedad pública para comprobar desde otros scripts ---
+    public bool IsPlayerDead
+    {
+        get { return playerIsDead; }
+    }
 
     void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
-            // DontDestroyOnLoad(gameObject); // opcional
+            Debug.Log("[DeathManager] Instance asignada a: " + gameObject.name);
         }
         else
         {
+            Debug.LogWarning("[DeathManager] Ya existe una instancia. Destruyendo duplicado: " + gameObject.name);
             Destroy(gameObject);
+        }
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        if (playerIsDead) return;
+
+        GameObject otherObj = other.gameObject;
+        bool byTag = otherObj.CompareTag("EnemyProjectile");
+        bool byComponent = otherObj.GetComponent<EnemyProjectile>() != null || otherObj.GetComponentInParent<EnemyProjectile>() != null;
+        bool byName = otherObj.name.Contains("BulletEnemy") || otherObj.name.Contains("Bullet") || otherObj.name.Contains("BulletEnemy(Clone)");
+
+        if (byTag || byComponent || byName)
+        {
+            KillPlayer(gameObject);
+        }
+    }
+
+    void OnCollisionEnter2D(Collision2D collision)
+    {
+        if (playerIsDead) return;
+
+        GameObject otherObj = collision.gameObject;
+        bool byTag = otherObj.CompareTag("EnemyProjectile");
+        bool byComponent = otherObj.GetComponent<EnemyProjectile>() != null || otherObj.GetComponentInParent<EnemyProjectile>() != null;
+        bool byName = otherObj.name.Contains("BulletEnemy") || otherObj.name.Contains("Bullet") || otherObj.name.Contains("BulletEnemy(Clone)");
+
+        if (byTag || byComponent || byName)
+        {
+            KillPlayer(gameObject);
         }
     }
 
     public void KillPlayer(GameObject player)
     {
-        if (player == null)
-        {
-            Debug.LogWarning("[DeathManager] KillPlayer recibió null.");
-            return;
-        }
+        if (player == null) return;
+        if (playerIsDead) return;
 
         playerIsDead = true;
+        Debug.Log($"[DeathManager] KillPlayer ejecutado para {player.name}");
 
         Vector3 pos = player.transform.position;
         Quaternion rot = player.transform.rotation;
@@ -60,33 +90,21 @@ public class DeathManager : MonoBehaviour
 
         Destroy(player);
 
-        if (additionalObjectToDestroy != null)
-        {
-            Destroy(additionalObjectToDestroy);
-        }
+        // 🔥 Ahora soporta 3 objetos adicionales
+        if (additionalObjectToDestroy1 != null) Destroy(additionalObjectToDestroy1);
+        if (additionalObjectToDestroy2 != null) Destroy(additionalObjectToDestroy2);
+        if (additionalObjectToDestroy3 != null) Destroy(additionalObjectToDestroy3);
 
-        StartCoroutine(RestartSceneAfter(restartDelayAfterDeath));
-    }
-
-    public bool IsPlayerDead()
-    {
-        return playerIsDead;
+        // 🔥 Reinicio forzado a los 6 segundos, pase lo que pase
+        StartCoroutine(RestartSceneAfter(6f));
     }
 
     private IEnumerator RestartSceneAfter(float seconds)
     {
         yield return new WaitForSeconds(seconds);
 
-        UIEntranceAnimator[] animators = FindObjectsOfType<UIEntranceAnimator>();
-        if (animators.Length > 0)
-        {
-            animators[0].TriggerGlobalExit();
-        }
-        else
-        {
-            Scene current = SceneManager.GetActiveScene();
-            SceneManager.LoadScene(current.buildIndex);
-        }
+        Scene current = SceneManager.GetActiveScene();
+        SceneManager.LoadScene(current.buildIndex);
     }
 
     private void DisablePlayerBeforeDestroy(GameObject player)
@@ -98,10 +116,10 @@ public class DeathManager : MonoBehaviour
             b.enabled = false;
         }
 
-        var cols = player.GetComponentsInChildren<Collider>();
+        var cols = player.GetComponentsInChildren<Collider2D>();
         foreach (var c in cols) c.enabled = false;
 
-        var rbs = player.GetComponentsInChildren<Rigidbody>();
+        var rbs = player.GetComponentsInChildren<Rigidbody2D>();
         foreach (var rb in rbs) rb.isKinematic = true;
     }
 }

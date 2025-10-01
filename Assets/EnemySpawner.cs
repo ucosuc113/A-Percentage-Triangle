@@ -1,4 +1,6 @@
 using UnityEngine;
+using System;
+using System.Reflection;
 
 public class EnemySpawner : MonoBehaviour
 {
@@ -23,7 +25,7 @@ public class EnemySpawner : MonoBehaviour
     public float minSpawnInterval = 1f;
 
     [Tooltip("Duración (en segundos) para interpolar el spawn interval y tamaños")]
-    public float scaleLerpDuration = 210f; // 3:30 minutos
+    public float scaleLerpDuration = 70f; // 1:10 minutos
 
     [Tooltip("Rango inicial de escala (min, max)")]
     public Vector2 startScaleRange = new Vector2(0.7f, 1f);
@@ -56,10 +58,8 @@ public class EnemySpawner : MonoBehaviour
     {
         elapsedTime += Time.deltaTime;
 
-        // Interpolamos spawnInterval de forma más brusca:
-        // Usamos una curva cuadrática para hacer que el cambio sea rápido al principio y lento después.
         float t = Mathf.Clamp01(elapsedTime / scaleLerpDuration);
-        float curvedT = Mathf.Pow(t, 0.25f); // raíz cuarta para transición brusca inicial
+        float curvedT = Mathf.Pow(t, 0.25f);
 
         spawnInterval = Mathf.Lerp(initialSpawnInterval, minSpawnInterval, curvedT);
 
@@ -67,9 +67,7 @@ public class EnemySpawner : MonoBehaviour
 
         if (timer >= spawnInterval)
         {
-            // Spawnear entre 1 y 3 enemigos al mismo tiempo
-            int enemiesToSpawn = Random.Range(1, 4); // 1, 2 o 3
-
+            int enemiesToSpawn = UnityEngine.Random.Range(1, 4); // 1,2 o 3
             for (int i = 0; i < enemiesToSpawn; i++)
             {
                 SpawnEnemy();
@@ -83,39 +81,35 @@ public class EnemySpawner : MonoBehaviour
     {
         if (collisionsParent == null || collisionsParent.childCount == 0)
         {
-            return; // No puede spawnear si falta algo
+            Debug.LogWarning("EnemySpawner: collisionsParent no configurado o vacío. No se spawnea.");
+            return;
         }
 
-        // Elegir un hijo aleatorio de collisionsParent para spawn
-        Transform spawnPoint = collisionsParent.GetChild(Random.Range(0, collisionsParent.childCount));
+        Transform spawnPoint = collisionsParent.GetChild(UnityEngine.Random.Range(0, collisionsParent.childCount));
 
-        // Interpolación de tamaño según el tiempo transcurrido
         float t = Mathf.Clamp01(elapsedTime / scaleLerpDuration);
         float minScale = Mathf.Lerp(startScaleRange.x, endScaleRange.x, t);
         float maxScale = Mathf.Lerp(startScaleRange.y, endScaleRange.y, t);
 
-        float randomScale = Random.Range(minScale, maxScale);
+        float randomScale = UnityEngine.Random.Range(minScale, maxScale);
 
-        // Calcular normalizado para el color y velocidad
+        // Normalizado para color/velocidad (evita NaN si rangos inválidos)
+        float denom = Mathf.Max(1e-6f, (startScaleRange.y - endScaleRange.x));
         float normScale = Mathf.InverseLerp(endScaleRange.x, startScaleRange.y, randomScale);
 
-        // Elegir qué tipo de enemigo spawnear según el tiempo
         GameObject prefabToSpawn;
 
         if (elapsedTime < scaleLerpDuration * 0.5f)
         {
-            // Primer 50% del tiempo: solo etapa 1
             prefabToSpawn = enemyStage1Prefab;
         }
         else if (elapsedTime < scaleLerpDuration * 0.85f)
         {
-            // Entre 50% y 85%: etapa 1 y etapa 2 mezclados
-            prefabToSpawn = (Random.value < 0.6f) ? enemyStage1Prefab : enemyStage2Prefab;
+            prefabToSpawn = (UnityEngine.Random.value < 0.6f) ? enemyStage1Prefab : enemyStage2Prefab;
         }
         else
         {
-            // Últimos 15%: etapa 1, 2 y 3 mezclados, con más chance de etapa 3
-            float rand = Random.value;
+            float rand = UnityEngine.Random.value;
             if (rand < 0.4f)
                 prefabToSpawn = enemyStage3Prefab;
             else if (rand < 0.7f)
@@ -124,30 +118,57 @@ public class EnemySpawner : MonoBehaviour
                 prefabToSpawn = enemyStage1Prefab;
         }
 
-        if (prefabToSpawn == null)
-            return; // Evitar errores
+        if (prefabToSpawn == null) return;
 
-        // Instanciar el clon
         GameObject clone = Instantiate(prefabToSpawn, spawnPoint.position, Quaternion.identity);
-
-        // Asegurarse que el clon esté activo (visible)
         clone.SetActive(true);
-
         clone.transform.localScale = new Vector3(randomScale, randomScale, 1f);
 
         SpriteRenderer sr = clone.GetComponent<SpriteRenderer>();
         if (sr != null)
         {
-            // Color del clone entre negro (pequeño) y rojo vivo (grande)
             sr.color = Color.Lerp(Color.black, Color.red, normScale);
         }
 
-        HomingEnemy he = clone.GetComponent<HomingEnemy>();
-        if (he != null)
+        // --- Cambio: evitar dependencia de tipo HomingEnemy ---
+        // Buscamos cualquier MonoBehaviour que tenga campos "maxSpeed" (float) y "collisionsParent" (Transform)
+        MonoBehaviour[] monos = clone.GetComponents<MonoBehaviour>();
+        foreach (MonoBehaviour mb in monos)
         {
-            // Ajusta la velocidad: más pequeño = más rápido
-            he.maxSpeed = Mathf.Lerp(15f, 10f, normScale);
-            he.collisionsParent = collisionsParent;
+            if (mb == null) continue;
+            Type ttype = mb.GetType();
+
+            // Buscamos campo o propiedad 'maxSpeed' (campo público o propiedad)
+            FieldInfo fMax = ttype.GetField("maxSpeed", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            PropertyInfo pMax = fMax == null ? ttype.GetProperty("maxSpeed", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) : null;
+
+            // Buscamos campo 'collisionsParent' (Transform)
+            FieldInfo fParent = ttype.GetField("collisionsParent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            PropertyInfo pParent = fParent == null ? ttype.GetProperty("collisionsParent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) : null;
+
+            if (fMax != null || pMax != null)
+            {
+                float computedSpeed = Mathf.Lerp(15f, 10f, normScale);
+                try
+                {
+                    if (fMax != null && fMax.FieldType == typeof(float))
+                        fMax.SetValue(mb, computedSpeed);
+                    else if (pMax != null && pMax.PropertyType == typeof(float) && pMax.CanWrite)
+                        pMax.SetValue(mb, computedSpeed, null);
+
+                    if (fParent != null && fParent.FieldType == typeof(Transform))
+                        fParent.SetValue(mb, collisionsParent);
+                    else if (pParent != null && pParent.PropertyType == typeof(Transform) && pParent.CanWrite)
+                        pParent.SetValue(mb, collisionsParent, null);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"EnemySpawner: error al asignar campos por reflexión a {ttype.Name}: {ex.Message}");
+                }
+
+                // rompemos porque ya encontramos un candidato válido
+                break;
+            }
         }
     }
 }

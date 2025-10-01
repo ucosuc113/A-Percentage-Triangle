@@ -15,7 +15,13 @@ public class ShaderEffectController : MonoBehaviour
 
     void Update()
     {
-        if (DeathManager.Instance.IsPlayerDead())
+        // Protección: si no hay material no hacemos nada
+        if (material == null) return;
+
+        // Usar la propiedad (sin paréntesis). Usamos operador null-conditional por seguridad.
+        bool playerDead = DeathManager.Instance?.IsPlayerDead ?? false;
+
+        if (playerDead)
         {
             material.SetFloat("_PlayerExists", 0f);
 

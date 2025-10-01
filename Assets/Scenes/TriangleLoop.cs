@@ -7,7 +7,6 @@ public class TriangleLoop : MonoBehaviour
     private Material triangleMaterial;
     private ParticleSystem particleSystem;
     private Color originalColor;
-    private bool isLooping = false;
 
     void Start()
     {

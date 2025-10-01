@@ -1,6 +1,6 @@
 using UnityEngine;
-using UnityEngine.UI;        // Para UI clásico
-using TMPro;                // Para TMP (si usas TMP_Text)
+using UnityEngine.UI;
+using TMPro;
 
 public class Projectile : MonoBehaviour
 {
@@ -13,82 +13,104 @@ public class Projectile : MonoBehaviour
     public GameObject extraParticlePrefab;
 
     [Header("UI")]
-    public Text scoreText;             // ✅ Para UI clásico (opcional)
-    public TMP_Text tmpScoreText;      // ✅ Para TMP (más moderno)
+    public Text scoreText;
+    public TMP_Text tmpScoreText;
 
-    private static int killCount = 0;  // ✅ Contador estático para acumular kills
-
+    private static int killCount = 0;
     private Rigidbody2D rb;
+
+    [Header("Collision settings")]
+    public string targetTag = "Enemy";           // objetivo que este proyectil debe dañar
+    public float spawnInvulnerability = 0.05f;  // evitar colisiones justo al instanciar
+    private float spawnTime;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         if (rb == null)
             Debug.LogWarning("Rigidbody2D no encontrado en el proyectil.");
+
+        if (scoreText != null) scoreText.text = killCount.ToString();
+        if (tmpScoreText != null) tmpScoreText.text = killCount.ToString();
+
+        spawnTime = Time.time;
     }
 
-    public void SetDirection(Vector2 dir)
-    {
-        direction = dir.normalized;
-    }
+    public static void ResetKillCount() => killCount = 0;
+
+    public void SetDirection(Vector2 dir) => direction = dir.normalized;
 
     void FixedUpdate()
     {
-        if (rb != null)
-        {
-            rb.linearVelocity = direction * speed;
-        }
-        else
-        {
-            transform.position += (Vector3)(direction * speed * Time.fixedDeltaTime);
-        }
+        if (rb != null) rb.linearVelocity = direction * speed;
+        else transform.position += (Vector3)(direction * speed * Time.fixedDeltaTime);
     }
 
     void OnTriggerEnter2D(Collider2D collision)
     {
-        Debug.Log($"Proyectil tocó: {collision.gameObject.name}, Tag: {collision.tag}");
+        if (Time.time - spawnTime < spawnInvulnerability) return;
 
-        if (collision.CompareTag("Enemy"))
+        // Ignorar si el otro es cualquier proyectil (este o enemigo) incluso si está en parent/child
+        if (IsOtherProjectile(collision))
         {
-            Debug.Log("Impacto en enemigo");
-            DestroyEnemyAndProjectile(collision.gameObject);
+            Debug.Log("Projectile: ignorando colisión con otro proyectil -> " + collision.gameObject.name);
+            return;
         }
-        else if (collisionsParent != null && collision.transform.IsChildOf(collisionsParent))
+
+        Debug.Log($"Projectile tocó: {collision.gameObject.name}, Tag: {collision.tag}");
+
+        if (collision.CompareTag(targetTag))
         {
-            Debug.Log("Impacto en colisión");
+            Debug.Log("Impacto en enemigo (targetTag matched)");
+            DestroyTargetAndSelf(collision.gameObject);
+            return;
+        }
+
+        if (collisionsParent != null && collision.transform.IsChildOf(collisionsParent))
+        {
+            Debug.Log("Impacto en colisión del entorno -> destruir proyectil.");
             Destroy(gameObject);
+            return;
         }
     }
 
-    void DestroyEnemyAndProjectile(GameObject enemy)
+    bool IsOtherProjectile(Collider2D col)
+    {
+        // Busca ambos tipos en self/parents/children
+        if (col.GetComponent<Projectile>() != null) return true;
+        if (col.GetComponentInParent<Projectile>() != null) return true;
+        if (col.GetComponentInChildren<Projectile>() != null) return true;
+
+        // EnemyProjectile también debe ignorarse
+        var enemyProj = col.GetComponentInParent<EnemyProjectile>();
+        if (enemyProj != null) return true;
+        enemyProj = col.GetComponentInChildren<EnemyProjectile>();
+        if (enemyProj != null) return true;
+        if (col.GetComponent<EnemyProjectile>() != null) return true;
+
+        return false;
+    }
+
+    void DestroyTargetAndSelf(GameObject target)
     {
         if (hitParticlePrefab != null)
         {
-            GameObject particles = Instantiate(hitParticlePrefab, enemy.transform.position, Quaternion.identity);
+            GameObject particles = Instantiate(hitParticlePrefab, target.transform.position, Quaternion.identity);
             Destroy(particles, 0.3f);
         }
-
         if (extraParticlePrefab != null)
         {
-            GameObject extraParticles = Instantiate(extraParticlePrefab, enemy.transform.position, Quaternion.identity);
+            GameObject extraParticles = Instantiate(extraParticlePrefab, target.transform.position, Quaternion.identity);
             Destroy(extraParticles, 0.7f);
         }
 
-        // ✅ Incrementar contador y actualizar texto
         killCount++;
+        if (scoreText != null) scoreText.text = killCount.ToString();
+        if (tmpScoreText != null) tmpScoreText.text = killCount.ToString();
 
-        if (scoreText != null)
-            scoreText.text = "" + killCount;
-
-        if (tmpScoreText != null)
-            tmpScoreText.text = "" + killCount;
-
-        Destroy(enemy);
+        Destroy(target); // idealmente reemplazar por ApplyDamage a un Health component
         Destroy(gameObject);
     }
 
-    public void SetSpeed(float newSpeed)
-    {
-        speed = newSpeed;
-    }
+    public void SetSpeed(float newSpeed) => speed = newSpeed;
 }

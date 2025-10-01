@@ -28,6 +28,13 @@ public class PlayerShoot : MonoBehaviour
 
     private bool estaEnCooldownTripleGrande = false;
 
+    // --- AUDIO ---
+    public AudioClip shootClip;                 // asigna en Inspector
+    [Range(0f, 1f)] public float volume = 1f;
+    public float pitchMin = 1f;
+    public float pitchMax = 1f;
+    private AudioSource audioSource;
+
     void Start()
     {
         if (jugador == null)
@@ -35,50 +42,59 @@ public class PlayerShoot : MonoBehaviour
             jugador = this.gameObject;
             Debug.Log("Jugador asignado automáticamente al propio GameObject.");
         }
+
+        // Init AudioSource
+        audioSource = GetComponent<AudioSource>();
+        if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
+        audioSource.playOnAwake = false;
+        audioSource.spatialBlend = 0f; // 0 = 2D (sonido global), pon 1 para 3D si lo deseas
     }
 
-void Update()
-{
-    if (Input.GetKeyDown(KeyCode.Space))
+    void Update()
     {
-        // 🔁 1. Activar Flash visual
-        ShaderEffectController shaderController = FindObjectOfType<ShaderEffectController>();
-        if (shaderController != null)
-            shaderController.StartFlash();
-
-        // 🔁 2. Activar Shake de cámara
-        CameraShake camShake = FindObjectOfType<CameraShake>();
-        if (camShake != null)
-            camShake.TriggerShake();
-
-        // 🔫 3. Disparar el arma
-        switch (tipoArmaActual)
+        if (Input.GetKeyDown(KeyCode.Space))
         {
-            case TipoArma.Normal:
-                ShootProjectile();
-                IncrementarProbabilidadYChequear(2);
-                break;
+            // 🔁 1. Activar Flash visual
+            ShaderEffectController shaderController = FindObjectOfType<ShaderEffectController>();
+            if (shaderController != null)
+                shaderController.StartFlash();
 
-            case TipoArma.Triple:
-                ShootTripleProjectile();
-                IncrementarProbabilidadYChequear(2);
-                break;
+            // 🔁 2. Activar Shake de cámara
+            CameraShake camShake = FindObjectOfType<CameraShake>();
+            if (camShake != null)
+                camShake.TriggerShake();
 
-            case TipoArma.TripleGrande:
-                if (!estaEnCooldownTripleGrande)
-                {
-                    ShootTripleGrande();
-                    StartCoroutine(CooldownTripleGrande());
-                    IncrementarProbabilidadYChequear(3);
-                }
-                else
-                {
-                    Debug.Log("Disparo Triple Grande en cooldown.");
-                }
-                break;
+            // 🔫 3. Disparar el arma
+            switch (tipoArmaActual)
+            {
+                case TipoArma.Normal:
+                    ShootProjectile();
+                    PlayShootSound();
+                    IncrementarProbabilidadYChequear(2);
+                    break;
+
+                case TipoArma.Triple:
+                    ShootTripleProjectile();
+                    PlayShootSound();
+                    IncrementarProbabilidadYChequear(2);
+                    break;
+
+                case TipoArma.TripleGrande:
+                    if (!estaEnCooldownTripleGrande)
+                    {
+                        ShootTripleGrande();
+                        PlayShootSound();
+                        StartCoroutine(CooldownTripleGrande());
+                        IncrementarProbabilidadYChequear(3);
+                    }
+                    else
+                    {
+                        Debug.Log("Disparo Triple Grande en cooldown.");
+                    }
+                    break;
+            }
         }
     }
-}
 
     void ShootProjectile()
     {
@@ -228,5 +244,13 @@ void Update()
             CambiarArma(TipoArma.TripleGrande);
             Destroy(other.gameObject);
         }
+    }
+
+    // Reproduce sonido por DISPARO (una vez por presionar Space)
+    void PlayShootSound()
+    {
+        if (shootClip == null || audioSource == null) return;
+        audioSource.pitch = Random.Range(pitchMin, pitchMax);
+        audioSource.PlayOneShot(shootClip, volume);
     }
 }
